@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#05080c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="JARVIS">
+<link rel="manifest" href="manifest.webmanifest">
+<title>JARVIS</title>
+<style>
+:root{color-scheme:dark;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",sans-serif}
+*{box-sizing:border-box}body{margin:0;background:#05080c;color:#eefcff;min-height:100vh}
+main{min-height:100vh;display:flex;flex-direction:column;padding:env(safe-area-inset-top) 20px env(safe-area-inset-bottom);max-width:700px;margin:auto}
+header{display:flex;justify-content:space-between;align-items:center;padding:18px 0}
+.brand{letter-spacing:.32em;font-size:15px;color:#a9efff}
+button{font:inherit;border:0;color:inherit}
+.gear{background:#101820;border:1px solid #21313a;border-radius:12px;padding:10px 12px}
+.core-wrap{display:grid;place-items:center;margin:34px 0 24px}
+.core{width:190px;height:190px;border-radius:50%;border:2px solid #5ce7ff;display:grid;place-items:center;position:relative;box-shadow:0 0 35px #32cfff44}
+.core:before,.core:after{content:"";position:absolute;border-radius:50%;border:1px solid #55ddff55}
+.core:before{inset:18px}.core:after{inset:42px}
+.core.active{animation:pulse 1.5s infinite;box-shadow:0 0 60px #32cfff99}
+@keyframes pulse{50%{transform:scale(1.04);box-shadow:0 0 75px #32cfffaa}}
+.mic{font-size:46px}.status{text-align:center;color:#6de9ff;letter-spacing:.18em;font-size:11px}
+.card{background:#0a1016;border:1px solid #172630;border-radius:18px;padding:17px;margin:10px 0}
+.label{font-size:10px;letter-spacing:.18em;color:#6d8c99;margin-bottom:7px}.text{line-height:1.45;min-height:24px}
+.activate{margin-top:12px;width:100%;padding:17px;border-radius:16px;background:#5ce7ff;color:#031015;font-weight:700;letter-spacing:.14em}
+.activate.off{background:#19252c;color:#b8d4dc}
+.hint{text-align:center;color:#6d8088;font-size:12px;margin:12px 0 20px}
+dialog{width:calc(100% - 32px);max-width:620px;background:#0a1016;color:#eefcff;border:1px solid #20333d;border-radius:20px;padding:20px}
+input{width:100%;padding:13px;border-radius:12px;background:#05080c;color:white;border:1px solid #29404c;margin:8px 0 14px}
+.actions{display:flex;gap:10px}.actions button{flex:1;padding:13px;border-radius:12px;background:#17242c}.save{background:#5ce7ff!important;color:#031015}
+.small{font-size:12px;color:#8ba2ab;line-height:1.45}
+</style>
+</head>
+<body>
+<main>
+<header><div class="brand">JARVIS</div><button class="gear" id="settings">⚙︎</button></header>
+
+<section class="core-wrap">
+  <div class="core" id="core"><div class="mic">◉</div></div>
+  <div class="status" id="status">STANDBY</div>
+</section>
+
+<div class="card"><div class="label">YOU</div><div class="text" id="heard">Say “Jarvis…”</div></div>
+<div class="card"><div class="label">JARVIS</div><div class="text" id="answer">Systems online.</div></div>
+
+<button class="activate" id="activate">ACTIVATE JARVIS</button>
+<div class="hint">While active, say “Jarvis” followed by your command.</div>
+</main>
+
+<dialog id="dialog">
+<h2>JARVIS SETTINGS</h2>
+<label class="small">OpenAI API key (stored only in this browser)</label>
+<input id="key" type="password" placeholder="sk-...">
+<div class="actions"><button id="cancel">Cancel</button><button class="save" id="save">Save</button></div>
+<p class="small">For a personal prototype only. A production app should use a server so an API key is never exposed in browser code.</p>
+</dialog>
+
+<script>
+const $=id=>document.getElementById(id);
+const state={active:false,listening:false};
+const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+let rec=null, restartTimer=null;
+
+function say(text){
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text);
+  u.lang="en-GB"; u.rate=.9; u.pitch=.82; u.volume=1;
+  u.onend=()=>{ if(state.active) setTimeout(startListening,500); };
+  speechSynthesis.speak(u);
+  $("answer").textContent=text;
+}
+function setStatus(s){$("status").textContent=s}
+function startListening(){
+  if(!state.active||!SpeechRecognition)return;
+  try{rec&&rec.abort()}catch{}
+  rec=new SpeechRecognition(); rec.lang="en-GB"; rec.continuous=false; rec.interimResults=false;
+  rec.onstart=()=>{state.listening=true;$("core").classList.add("active");setStatus("LISTENING")};
+  rec.onresult=e=>{const t=e.results[0][0].transcript; $("heard").textContent=t; handleSpeech(t)};
+  rec.onerror=e=>{state.listening=false;$("core").classList.remove("active"); if(state.active)setTimeout(startListening,800)};
+  rec.onend=()=>{state.listening=false;$("core").classList.remove("active");};
+  try{rec.start()}catch{}
+}
+function activate(){
+  if(!SpeechRecognition){alert("Voice recognition is not supported by this browser. Try the latest Safari on iPhone.");return}
+  state.active=true;$("activate").textContent="DISENGAGE";$("activate").classList.add("off");setStatus("ARMING");
+  startListening();
+}
+function deactivate(){
+  state.active=false;clearTimeout(restartTimer);try{rec&&rec.abort()}catch{}speechSynthesis.cancel();
+  state.listening=false;$("core").classList.remove("active");$("activate").textContent="ACTIVATE JARVIS";$("activate").classList.remove("off");setStatus("STANDBY");
+}
+function handleSpeech(raw){
+  const m=raw.match(/(?:^|\\s)jarvis(?:\\s+|$)(.*)/i);
+  if(!m){if(state.active)setTimeout(startListening,500);return}
+  const command=m[1].trim();
+  if(!command){say("Yes?");return}
+  handleCommand(command);
+}
+function localCommand(c){
+  const x=c.toLowerCase();
+  if(/what time|current time|time is it/.test(x)){
+    return "It is "+new Intl.DateTimeFormat("en-GB",{timeStyle:"short"}).format(new Date())+".";
+  }
+  if(/what date|today'?s date|what day/.test(x)){
+    return "Today is "+new Intl.DateTimeFormat("en-GB",{dateStyle:"full"}).format(new Date())+".";
+  }
+  if(/open (safari|google)/.test(x)){location.href="https://www.google.com";return "Opening Google."}
+  if(/open youtube/.test(x)){location.href="https://www.youtube.com";return "Opening YouTube."}
+  if(/hello|hi jarvis|how are you/.test(x))return "Good evening. All systems are operational.";
+  return null;
+}
+async function handleCommand(c){
+  const local=localCommand(c); if(local){say(local);return}
+  const key=localStorage.getItem("jarvis_key");
+  if(!key){say("I can handle local commands, but I need an API key for general questions. Open Settings.");return}
+  setStatus("THINKING");
+  try{
+    const r=await fetch("https://api.openai.com/v1/responses",{
+      method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key},
+      body:JSON.stringify({model:"gpt-5.6-luna",instructions:"You are JARVIS: a calm, concise British AI assistant. Respond naturally for spoken conversation. Do not claim actions you did not perform.",input:c})
+    });
+    if(!r.ok)throw new Error("API request failed");
+    const j=await r.json();
+    let out=j.output_text||"";
+    if(!out && Array.isArray(j.output))for(const item of j.output)for(const part of (item.content||[]))if(part.type==="output_text")out+=part.text||"";
+    if(!out)throw new Error("No response text");
+    say(out);
+  }catch(e){setStatus("ERROR");say("I'm sorry. I couldn't reach my intelligence service.");}
+}
+$("activate").onclick=()=>state.active?deactivate():activate();
+$("settings").onclick=()=>{$("key").value=localStorage.getItem("jarvis_key")||"";$("dialog").showModal()};
+$("cancel").onclick=()=>$("dialog").close();
+$("save").onclick=()=>{localStorage.setItem("jarvis_key",$("key").value.trim());$("dialog").close();say("Settings saved.")};
+
+if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script>
+</body>
+</html>
